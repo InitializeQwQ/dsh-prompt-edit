@@ -9,10 +9,10 @@ window.__ModuleLoader__.load({
 
     const zh = {
       'action.edit': '编辑提问',
-      'action.tooltip': '修改这条提问，并在新分支中重新生成回答',
+      'action.tooltip': '修改这条提问，并从这条提问重写后面的对话',
       'dialog.title': '编辑提问',
       'dialog.description':
-        '保存后，会从这条提问之前创建一个新分支，并用修改后的内容重新生成回答。当前对话保持原样，新分支会出现在侧边栏。',
+        '保存后，这条提问及其之后的回答会从对话中移除，修改后的内容作为新的提问重新生成。原对话会被归档，可在「已归档」中恢复。',
       'dialog.attachments':
         '这条提问还带有 {count} 个非文本内容，重新生成时只会保留文字。',
       'dialog.placeholder': '输入修改后的提问…',
@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
       'dialog.count': '{count} 字',
       'dialog.cancel': '取消',
       'dialog.submit': '保存并重新生成',
-      'dialog.submitting': '正在创建分支…',
+      'dialog.submitting': '正在重写对话…',
       'dialog.resolving': '正在加载上一轮对话…',
       'dialog.empty': '提问不能为空',
       'error.fork': '创建分支失败：{message}',
@@ -31,10 +31,10 @@ window.__ModuleLoader__.load({
 
     const en = {
       'action.edit': 'Edit prompt',
-      'action.tooltip': 'Edit this prompt and regenerate the answer in a new branch',
+      'action.tooltip': 'Edit this prompt and rewrite the conversation from here',
       'dialog.title': 'Edit prompt',
       'dialog.description':
-        'Saving creates a new branch just before this prompt and regenerates the answer with your changes. The current conversation stays intact and the branch appears in the sidebar.',
+        'Saving removes this prompt and every turn after it, then regenerates the answer from your revised text. The original conversation is archived and can be restored from Archived.',
       'dialog.attachments':
         'This prompt also carried {count} non-text item(s); only the text is kept when regenerating.',
       'dialog.placeholder': 'Type the revised prompt…',
@@ -42,7 +42,7 @@ window.__ModuleLoader__.load({
       'dialog.count': '{count} characters',
       'dialog.cancel': 'Cancel',
       'dialog.submit': 'Save & regenerate',
-      'dialog.submitting': 'Creating branch…',
+      'dialog.submitting': 'Rewriting the conversation…',
       'dialog.resolving': 'Loading the previous turn…',
       'dialog.empty': 'The prompt cannot be empty',
       'error.fork': 'Could not branch the conversation: {message}',
@@ -472,7 +472,7 @@ window.__ModuleLoader__.load({
                 childId = await ctx.sessions.fork({
                   sessionId: request.sessionId,
                   atSeq: boundary,
-                  increaseTitle: true,
+                  increaseTitle: false,
                 });
                 childRef.current = childId;
               } catch (cause) {
@@ -507,6 +507,14 @@ window.__ModuleLoader__.load({
 
             childRef.current = undefined;
             store.close();
+            // The session log is append-only and DSH exposes no in-place cut, so
+            // the branch is the mechanism. Hiding the source makes it read as the
+            // same conversation continued; the removed turns stay in Archived.
+            try {
+              await ctx.uiWorkspace.archiveSession(request.sessionId, { stopActivity: true });
+            } catch {
+              /* an archive refusal must not hide the branch that already answered */
+            }
             ctx.uiWorkspace.openSession(childId);
           })();
         }, [blocked, request, target, t, value]);
@@ -673,7 +681,7 @@ window.__ModuleLoader__.load({
             {
               name: OVERLAY_SLOT,
               id: 'prompt-edit-dialog',
-              order: 95,
+              order: 101,
               locale: NS,
             },
             createDialog(ctx, store),

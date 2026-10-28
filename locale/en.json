@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Prompt Rewrite",
-    "description": "Edit the prompt behind a completed turn, branch the conversation, and regenerate the answer with the revised text, like ChatGPT's edit-and-resend."
+    "description": "Edit the prompt behind a completed turn, cut the conversation from there, and regenerate the answer with the revised text, like ChatGPT's edit-and-resend."
   }
 }

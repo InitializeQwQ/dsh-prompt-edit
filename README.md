@@ -1,11 +1,11 @@
 # Prompt Rewrite（对话提问编辑）
 
-给 [DeepSeek Harness](https://github.com/deepseek-ai) 的 Web 界面加一个 **编辑提问** 动作：在已完成的一轮对话下修改原提问，自动创建分支并用改后的内容重新生成回答 —— 类似 ChatGPT 的「编辑并重新发送」，原对话保持不变。
+给 [DeepSeek Harness](https://github.com/deepseek-ai) 的 Web 界面加一个 **编辑提问** 动作：在已完成的一轮对话下修改原提问，从这条提问处把后面的对话切掉，并用改后的内容重新生成回答 —— 类似 ChatGPT 的「编辑并重新发送」。
 
-> A DeepSeek Harness bundle (Host + Web Client) that adds an **Edit prompt** action to completed turns: edit the prompt, fork the conversation before it, and regenerate the answer in the new branch.
+> A DeepSeek Harness bundle (Host + Web Client) that adds an **Edit prompt** action to completed turns: edit the prompt, cut the conversation at that point, and regenerate the answer from the revised text.
 
 - 纯前端能力，无需额外服务、无依赖、无构建步骤
-- 使用宿主自带的 `session/fork` 权限与分支能力，分支与原会话、内置「分支」按钮完全一致
+- 使用宿主自带的 `session/fork` 权限与分支能力，切出来的对话与内置「分支」按钮的结果完全一致
 - 不注入上下文、不改系统提示、不注册 Agent 工具：这是只属于人的操作
 
 ## 安装
@@ -45,10 +45,10 @@ git clone https://github.com/<你的用户名>/dsh-prompt-edit.git
 1. 打开任一会话，把鼠标移到**已完成轮次**的页脚（回答下方、复制/分支图标那一行附近），出现 **编辑提问**。
 2. 点击，编辑器会预填这条提问的原文；改成你想要的内容。
 3. `⌘/Ctrl + Enter` 或点 **保存并重新生成**：
-   - 自动从这条提问之前切出一个分支（标题追加分支序号），侧边栏出现新会话；
-   - 改后的文字作为该分支的新一轮提问发送，回答在分支里重新流式生成；
-   - 当前会话原封不动。
-4. `Esc` 取消。取消时若分支已创建但提问还没发出去，该空白分支会被自动归档。
+   - 从这条提问之前切出这段对话：这条提问及其之后的回答不再出现在当前对话里；
+   - 改后的文字作为新的提问发送，回答重新流式生成；
+   - 原对话被归档（标题不变），可在侧边栏「已归档」中找回。
+4. `Esc` 取消。取消时若分支已创建但提问还没发出去，该空白分支会被自动归档，原对话不受影响。
 
 只对「确实由一条人类提问开始」的轮次显示；命令触发、后台任务、唤醒消息开始的轮次没有这个入口。没有分支权限（`session/fork`）时也不显示。
 
@@ -67,7 +67,8 @@ git clone https://github.com/<你的用户名>/dsh-prompt-edit.git
 ## 已知限制
 
 - 只迁移文字内容；原提问里的图片/文件不会随分支重发（会提示有几个非文本块被丢弃）。
-- 一轮里若同时领取了多条排队提问，只编辑第一条，其余留在旧分支。
+- 宿主的会话日志是只追加的，没有「原地截断」接口：实现上是切一段前缀 + 归档原会话，所以原对话本身仍完整保存在「已归档」里。
+- 一轮里若同时领取了多条排队提问，只编辑第一条，其余留在原对话（已归档）里。
 - 依赖 Harness 的客户端插槽与 `session/fork` API；DSH 大版本升级后若插槽或该方法签名变化，可能需要适配。
 - 界面样式只用主题令牌（`--dsw-alias-*`），跟随明暗主题。
 
