@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@local/dsh-prompt-edit',
+  id: 'dsh-prompt-edit',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
@@ -657,7 +657,7 @@ window.__ModuleLoader__.load({
         const store = createEditorStore();
         ctx.effect(() => {
           const tag = document.createElement('style');
-          tag.dataset.plugin = '@local/dsh-prompt-edit';
+          tag.dataset.plugin = 'dsh-prompt-edit';
           tag.textContent = STYLE;
           document.head.appendChild(tag);
           return () => {

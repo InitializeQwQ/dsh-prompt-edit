@@ -58,7 +58,7 @@ git clone https://github.com/InitializeQwQ/dsh-prompt-edit.git
 ## 更新与卸载
 
 - **更新**：git spec 固定在安装时的提交，所以先移除再安装；或用带引用 / 提交的 spec 重装，如 `github:InitializeQwQ/dsh-prompt-edit#main`。
-- **卸载**：Plugins 页面对该 bundle 选择移除，或让 Agent 移除 `@local/dsh-prompt-edit`。
+- **卸载**：Plugins 页面对该 bundle 选择移除，或让 Agent 移除 `dsh-prompt-edit`。
 
 ## 工作原理（简述）
 
