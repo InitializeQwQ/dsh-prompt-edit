@@ -1,0 +1,3 @@
+- insert:
+    - id: prompt-edit
+      name: '@local/dsh-prompt-edit'
