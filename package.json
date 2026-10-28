@@ -3,9 +3,24 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Edit a prompt from a completed turn, branch the conversation, and regenerate the answer.",
+  "description": "Edit a prompt from a completed turn, cut the conversation there, and regenerate the answer.",
   "license": "MIT",
-  "keywords": ["deepseek-harness", "dsh-plugin", "dsh-bundle", "chat", "branch"],
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "dsh-bundle",
+    "prompt",
+    "edit",
+    "chat"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/InitializeQwQ/dsh-prompt-edit.git"
+  },
+  "homepage": "https://github.com/InitializeQwQ/dsh-prompt-edit#readme",
+  "bugs": {
+    "url": "https://github.com/InitializeQwQ/dsh-prompt-edit/issues"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -22,7 +37,9 @@
     "LICENSE"
   ],
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "immediately": true,
