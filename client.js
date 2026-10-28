@@ -4,7 +4,7 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const NS = 'prompt-edit';
-    const ACTIONS_SLOT = 'conversation.chat.assistant-actions';
+    const TAIL_SLOT = 'conversation.chat.turnTail';
     const OVERLAY_SLOT = 'shell.overlay';
 
     const zh = {
@@ -55,14 +55,18 @@ window.__ModuleLoader__.load({
     /*
      * Colors are --dsw-alias-* theme tokens only. The scrim tints the base
      * surface with color-mix so it follows light and dark themes.
-     * The icon button mirrors the shipped `.actions > button` metrics, so it sits
-     * in the message action row beside copy and inherits that row's reveal.
+     * The tail entry reuses the host's own reveal contract: `data-actions-reveal`
+     * is "always" on the latest response-ending turn and "hover" elsewhere.
      */
     const STYLE = `
-.dsh-pe__icon{width:calc(28px + var(--dsh-content-font-delta,0px));height:calc(28px + var(--dsh-content-font-delta,0px));display:inline-flex;align-items:center;justify-content:center;padding:6px;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer;transition:background-color 80ms ease,color 80ms ease}
-.dsh-pe__icon:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
-.dsh-pe__icon:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
-.dsh-pe__icon svg{width:calc(17px + var(--dsh-content-font-delta,0px));height:calc(17px + var(--dsh-content-font-delta,0px))}
+.dsh-pe__tail{display:flex;align-items:center;margin:0 0 -6px;transition:opacity .12s ease}
+.dsh-pe__trigger{display:inline-flex;align-items:center;gap:6px;height:26px;margin:0 0 0 -8px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:18px;cursor:pointer;transition:background-color .12s ease,color .12s ease}
+.dsh-pe__trigger:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.dsh-pe__trigger:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+.dsh-pe__trigger svg{width:13px;height:13px;flex:none}
+[data-actions-reveal="hover"] .dsh-pe__tail{opacity:0}
+[data-turn-tail]:hover .dsh-pe__tail,[data-turn-tail]:focus-within .dsh-pe__tail{opacity:1}
+@media (hover:none){[data-actions-reveal="hover"] .dsh-pe__tail{opacity:1}}
 .dsh-pe__overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:auto;background:color-mix(in srgb,var(--dsw-alias-bg-base) 58%,transparent)}
 .dsh-pe__dialog{box-sizing:border-box;display:flex;flex-direction:column;gap:12px;width:min(600px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:20px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 24px 64px color-mix(in srgb,var(--dsw-alias-label-primary) 22%,transparent)}
 .dsh-pe__header{display:flex;flex-direction:column;gap:6px}
@@ -84,7 +88,7 @@ window.__ModuleLoader__.load({
 .dsh-pe__spinner{display:inline-block;width:12px;height:12px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:dsh-pe-spin .8s linear infinite}
 .dsh-pe__srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @keyframes dsh-pe-spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.dsh-pe__icon{transition:none}.dsh-pe__spinner{animation:none}}
+@media (prefers-reduced-motion:reduce){.dsh-pe__tail,.dsh-pe__trigger{transition:none}.dsh-pe__spinner{animation:none}}
 @media (max-width:480px){.dsh-pe__overlay{padding:12px}.dsh-pe__dialog{padding:16px}}
 `;
 
@@ -140,6 +144,19 @@ window.__ModuleLoader__.load({
       } catch {
         return 'UTC';
       }
+    }
+
+    /**
+     * Resolve the numeric Turn of the footer seat's `turn` prop.
+     *
+     * The seat hands over the Turn state object (`{ turn, start, end, status }`),
+     * not a bare number, so normalize before indexing the Chat timeline; a plain
+     * number is accepted too.
+     */
+    function turnNumber(value) {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      const inner = value !== null && typeof value === 'object' ? value.turn : undefined;
+      return typeof inner === 'number' && Number.isFinite(inner) ? inner : null;
     }
 
     /** First durable user prompt of one Turn, or null for other trigger kinds. */
@@ -284,23 +301,10 @@ window.__ModuleLoader__.load({
       );
     }
 
-    /** Resolve the Turn that owns one finalized Assistant message. */
-    function turnOfMessage(snapshot, messageId) {
-      const turns = snapshot?.timeline?.turns;
-      if (!(turns instanceof Map) || typeof messageId !== 'string') return null;
-      for (const [turn, state] of turns) {
-        const closing = state?.data?.get?.('turn-tail')?.closing;
-        if (closing?.finalNode?.messageId === messageId) return turn;
-      }
-      return null;
-    }
-
     function createAction(ctx, store) {
-      // Owner props of conversation.chat.assistant-actions: the settled message
-      // only. The Turn, and with it the fork boundary, comes from the snapshot.
-      return function PromptEditAction({ messageId, sessionId, useChat, useAccess, t }) {
+      return function PromptEditAction({ turn, sessionId, useChat, useAccess, t }) {
+        const turnNo = turnNumber(turn);
         const forkAllowed = useAccess('session/fork');
-        const turnNo = useChat(React.useCallback((snapshot) => turnOfMessage(snapshot, messageId), [messageId]));
         const closed = useChat(
           React.useCallback(
             (snapshot) => turnNo !== null && snapshot.timeline.turns.get(turnNo)?.status === 'closed',
@@ -345,19 +349,21 @@ window.__ModuleLoader__.load({
           });
         };
 
-        // Icon-only, matching the copy button's metrics and hover reveal; the
-        // label lives in the tooltip and the accessible name.
         return h(
-          'button',
-          {
-            type: 'button',
-            className: 'dsh-pe__icon',
-            'data-prompt-edit': 'trigger',
-            title: t('action.tooltip'),
-            'aria-label': t('action.edit'),
-            onClick: open,
-          },
-          h(PencilIcon),
+          'div',
+          { className: 'dsh-pe__tail', 'data-prompt-edit': 'trigger' },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-pe__trigger',
+              title: t('action.tooltip'),
+              'aria-label': t('action.edit'),
+              onClick: open,
+            },
+            h(PencilIcon),
+            h('span', null, t('action.edit')),
+          ),
         );
       };
     }
@@ -651,12 +657,12 @@ window.__ModuleLoader__.load({
           };
         }, 'dsh-prompt-edit: styles');
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-prompt-edit: dictionaries');
-        ctx.slots.inject(ACTIONS_SLOT, () =>
+        ctx.slots.inject(TAIL_SLOT, () =>
           ctx.slots.register(
             {
-              name: ACTIONS_SLOT,
+              name: TAIL_SLOT,
               id: 'prompt-edit',
-              order: 10,
+              order: 40,
               locale: NS,
             },
             createAction(ctx, store),
@@ -667,7 +673,7 @@ window.__ModuleLoader__.load({
             {
               name: OVERLAY_SLOT,
               id: 'prompt-edit-dialog',
-              order: 96,
+              order: 95,
               locale: NS,
             },
             createDialog(ctx, store),
