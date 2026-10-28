@@ -146,6 +146,19 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /**
+     * Resolve the numeric Turn of the footer seat's `turn` prop.
+     *
+     * The seat hands over the Turn state object (`{ turn, start, end, status }`),
+     * not a bare number, so normalize before indexing the Chat timeline; a plain
+     * number is accepted too.
+     */
+    function turnNumber(value) {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      const inner = value !== null && typeof value === 'object' ? value.turn : undefined;
+      return typeof inner === 'number' && Number.isFinite(inner) ? inner : null;
+    }
+
     /** First durable user prompt of one Turn, or null for other trigger kinds. */
     function firstUserNode(snapshot, turn) {
       if (typeof turn !== 'number' || !Number.isFinite(turn)) return null;
@@ -290,48 +303,49 @@ window.__ModuleLoader__.load({
 
     function createAction(ctx, store) {
       return function PromptEditAction({ turn, sessionId, useChat, useAccess, t }) {
+        const turnNo = turnNumber(turn);
         const forkAllowed = useAccess('session/fork');
         const closed = useChat(
           React.useCallback(
-            (snapshot) => typeof turn === 'number' && snapshot.timeline.turns.get(turn)?.status === 'closed',
-            [turn],
+            (snapshot) => turnNo !== null && snapshot.timeline.turns.get(turnNo)?.status === 'closed',
+            [turnNo],
           ),
         );
         const startSeq = useChat(
           React.useCallback(
             (snapshot) => {
-              const start = snapshot.timeline.turns.get(turn)?.start;
+              if (turnNo === null) return -1;
+              const start = snapshot.timeline.turns.get(turnNo)?.start;
               return typeof start?.seq === 'number' ? start.seq : -1;
             },
-            [turn],
+            [turnNo],
           ),
         );
         const boundary = useChat(
           React.useCallback(
             (snapshot) => {
-              if (typeof turn !== 'number' || turn <= 1) return 0;
-              const previous = snapshot.timeline.turns.get(turn - 1);
+              if (turnNo === null || turnNo <= 1) return 0;
+              const previous = snapshot.timeline.turns.get(turnNo - 1);
               const seq = previous?.end?.seq;
               return typeof seq === 'number' ? seq : -1;
             },
-            [turn],
+            [turnNo],
           ),
         );
-        const promptNode = useChat(React.useCallback((snapshot) => firstUserNode(snapshot, turn), [turn]));
+        const promptNode = useChat(React.useCallback((snapshot) => firstUserNode(snapshot, turnNo), [turnNo]));
 
-        if (!forkAllowed || !closed || promptNode === null || promptNode === undefined) return null;
-        if (typeof turn !== 'number') return null;
+        if (turnNo === null || !forkAllowed || !closed || promptNode === null || promptNode === undefined) return null;
 
         const content = promptNode.data.content;
         const open = () => {
           store.open({
             sessionId,
-            turn,
+            turn: turnNo,
             initialText: promptText(content),
             attachments: nonTextCount(content),
             boundary,
             turnStartSeq: startSeq >= 0 ? startSeq : null,
-            resolveBoundary: () => revealPreviousTurn(ctx, sessionId, turn, startSeq >= 0 ? startSeq : null),
+            resolveBoundary: () => revealPreviousTurn(ctx, sessionId, turnNo, startSeq >= 0 ? startSeq : null),
           });
         };
 
@@ -659,7 +673,7 @@ window.__ModuleLoader__.load({
             {
               name: OVERLAY_SLOT,
               id: 'prompt-edit-dialog',
-              order: 94,
+              order: 95,
               locale: NS,
             },
             createDialog(ctx, store),
