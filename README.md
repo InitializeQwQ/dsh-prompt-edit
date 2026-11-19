@@ -6,7 +6,7 @@
 
 > A DeepSeek Harness bundle (Host + Web Client) that adds an **Edit prompt** action to completed turns: edit the prompt, cut the conversation at that point, and regenerate the answer from the revised text.
 
-- 纯前端能力：不需要额外服务、没有 npm 依赖、没有构建步骤
+- 不需要额外服务、没有 npm 依赖、没有构建步骤；Host 半侧只注册一条鉴权 RPC 通道
 - 复用宿主自带的 `session/fork` 与 `session.prompt`，切出来的对话和内置「分支」按钮的结果一致
 - 不注入上下文、不改系统提示、不注册 Agent 工具：这是只属于人的操作
 - 界面只用 `--dsw-alias-*` 主题令牌，跟随明暗主题与字号
@@ -66,11 +66,12 @@ git clone https://github.com/InitializeQwQ/dsh-prompt-edit.git
 - 分支边界取**上一轮的 `turn/end`**（第一轮取 `0`）。宿主的 fork 边界是闭区间，而原提问的 `agent/inbox/spliced` 紧随上一轮结束之后，所以这样切**不会把原提问带进新会话**，也不会重复生成。
 - 上一轮尚未载入时，先向上翻一页历史（按轮对齐）再解析边界；解析不到就明确报错，不会退化成可能带进原提问的位置。
 - 发送走宿主 `session.prompt`，与输入框同一条链路；失败原因显示在弹窗里。
+- 附件迁移分两条路：图片在会话日志里是持久引用，客户端向 `session.attachment` 取回字节后以 base64 原样重发；普通文件的字节只在 Host 上（`attachments.readFileStream`），提示词又只能用上传回执引用文件，所以 `index.js` 在鉴权的 Connection RPC 通道 `/prompt-edit` 上把存储对象转成子会话的 `receiptId`，客户端用 `{ type: 'file', receiptId }` 引用。
 - 保存成功后归档原会话并按原标题切到新对话，所以侧边栏看起来是**同一条对话被重写**，而不是多出一条分支。
 
 ## 已知限制
 
-- 只迁移文字内容；原提问里的图片 / 文件不会随重发带上（弹窗会提示有几个非文本块被丢弃）。
+- 附件一并带走：图片按原样重发（引用同一份存储对象），普通文件由插件的 Host 半侧重新挂成新对话的上传回执，模型照常能读；个别附件失败时只影响它自己，其余照常发送（浏览器控制台会记一条警告）。
 - 宿主会话日志是只追加的，没有「原地截断」接口：实现上是切一段前缀 + 归档原会话，所以被切掉的部分仍完整保存在「已归档」里。
 - 一轮里若同时领取了多条排队提问，只编辑第一条，其余留在原对话（已归档）里。
 - 依赖 Harness 的客户端插槽与 `session/fork` API；DSH 大版本升级后若插槽或方法签名变化，可能需要适配（见 `dsh.client.inject` 与 `client.js`）。
@@ -80,7 +81,7 @@ git clone https://github.com/InitializeQwQ/dsh-prompt-edit.git
 ```
 package.json        # bundle 清单：dsh.bundle.patch + dsh.client
 cordis.patch.yml    # 插入宿主侧插件行
-index.js            # 宿主半边（仅保留可启停的插件条目）
+index.js            # 宿主半边：/prompt-edit RPC，把原提问的文件转成新会话的上传回执
 client.js           # 全部前端实现：页脚动作 + 编辑弹窗
 locale/en.json      # 插件管理器中的标题/说明（英文）
 locale/zh.json      # 插件管理器中的标题/说明（中文）

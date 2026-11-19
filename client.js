@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
       'dialog.description':
         '保存后，这条提问及其之后的回答会从对话中移除，修改后的内容作为新的提问重新生成。原对话会被归档，可在「已归档」中恢复。',
       'dialog.attachments':
-        '这条提问还带有 {count} 个非文本内容，重新生成时只会保留文字。',
+        '原提问的 {count} 个附件会一起带上（图片原样重发，文件重新挂到新对话）。',
       'dialog.placeholder': '输入修改后的提问…',
       'dialog.hint': '⌘/Ctrl + Enter 保存 · Esc 取消',
       'dialog.count': '{count} 字',
@@ -36,7 +36,7 @@ window.__ModuleLoader__.load({
       'dialog.description':
         'Saving removes this prompt and every turn after it, then regenerates the answer from your revised text. The original conversation is archived and can be restored from Archived.',
       'dialog.attachments':
-        'This prompt also carried {count} non-text item(s); only the text is kept when regenerating.',
+        'The {count} attachment(s) of the original prompt are carried over (images re-sent, files re-staged).',
       'dialog.placeholder': 'Type the revised prompt…',
       'dialog.hint': '⌘/Ctrl + Enter to save · Esc to cancel',
       'dialog.count': '{count} characters',
@@ -111,14 +111,105 @@ window.__ModuleLoader__.load({
       return parts.join('\n');
     }
 
-    /** Count the parts a text-only re-send cannot carry. */
-    function nonTextCount(content) {
-      if (!Array.isArray(content)) return 0;
-      let count = 0;
-      for (const block of content) {
-        if (block !== null && typeof block === 'object' && block.type !== 'text') count += 1;
+    /** Attachment references of one prompt, in their original order. */
+    function promptAttachments(content) {
+      const images = [];
+      const files = [];
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block === null || typeof block !== 'object') continue;
+          if (block.type === 'image' && block.attachment !== undefined) images.push(block.attachment);
+          else if (block.type === 'file' && block.attachment !== undefined) files.push(block.attachment);
+        }
       }
-      return count;
+      return { images, files };
+    }
+
+    /** Total attachment count of one prompt content list. */
+    function attachmentCount(content) {
+      const { images, files } = promptAttachments(content);
+      return images.length + files.length;
+    }
+
+    /** Authenticated host route the bundle's Host half registers for file adoption. */
+    const ADOPT_PATH = '/api/prompt-edit';
+
+    /**
+     * Re-attach the original prompt's images and files to the rewritten prompt.
+     *
+     * Images are durable references in the session log, so the Session attachment
+     * route returns their bytes and the prompt carries them inline again; the same
+     * stored object is referenced, not a copy. Generic files are stored verbatim on
+     * the Host and cannot be read from the page, so the Host half turns each stored
+     * object into a fresh upload receipt for the child Session and the prompt cites
+     * those receipts, exactly like a file attached in the composer.
+     * @param ctx - client plugin context.
+     * @param sourceSessionId - Session whose log holds the references.
+     * @param childId - Session that will receive the rewritten prompt.
+     * @param attachments - image and file references of the original prompt.
+     * @returns the leading content parts plus how many references were dropped.
+     */
+    async function carryAttachments(ctx, sourceSessionId, childId, { images, files }) {
+      const parts = [];
+      let dropped = 0;
+
+      for (const attachment of images) {
+        try {
+          const result = await ctx.remote.session.attachment({ sessionId: sourceSessionId, attachment });
+          if (result === null || result === undefined || result.ok !== true) {
+            dropped += 1;
+            continue;
+          }
+          const mediaType = result.value?.attachment?.mediaType ?? attachment.mediaType;
+          const data = result.value?.data;
+          if (typeof mediaType !== 'string' || typeof data !== 'string' || data === '') {
+            dropped += 1;
+            continue;
+          }
+          parts.push({
+            type: 'image',
+            mediaType,
+            data,
+            ...(typeof attachment.name === 'string' && attachment.name !== '' ? { name: attachment.name } : {}),
+          });
+        } catch {
+          dropped += 1;
+        }
+      }
+
+      if (files.length > 0) {
+        const receipts = new Map();
+        try {
+          const response = await fetch(ADOPT_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sessionId: childId, files }),
+          });
+          const payload = response.ok ? await response.json() : null;
+          if (payload !== null && payload.ok === true && Array.isArray(payload.receipts)) {
+            for (const entry of payload.receipts) {
+              if (typeof entry?.attachmentId === 'string' && typeof entry?.receiptId === 'string') {
+                receipts.set(entry.attachmentId, entry.receiptId);
+              }
+            }
+          } else {
+            console.warn('[prompt-edit] the file adoption route refused the request', response.status, payload);
+          }
+        } catch (cause) {
+          /* a disabled Host half leaves the text intact; files are counted as dropped */
+          console.warn('[prompt-edit] the file adoption route is unreachable', cause);
+        }
+        for (const attachment of files) {
+          const receiptId = receipts.get(String(attachment.attachmentId));
+          if (receiptId === undefined) {
+            dropped += 1;
+            continue;
+          }
+          parts.push({ type: 'file', receiptId });
+        }
+      }
+
+      return { parts, dropped };
     }
 
     /** Read a human-facing message out of an unknown failure. */
@@ -342,7 +433,8 @@ window.__ModuleLoader__.load({
             sessionId,
             turn: turnNo,
             initialText: promptText(content),
-            attachments: nonTextCount(content),
+            content,
+            attachments: attachmentCount(content),
             boundary,
             turnStartSeq: startSeq >= 0 ? startSeq : null,
             resolveBoundary: () => revealPreviousTurn(ctx, sessionId, turnNo, startSeq >= 0 ? startSeq : null),
@@ -482,12 +574,22 @@ window.__ModuleLoader__.load({
               }
             }
 
+            let content = [{ type: 'text', text: nextText }];
+            const carried = promptAttachments(request.content);
+            if (carried.images.length > 0 || carried.files.length > 0) {
+              const transferred = await carryAttachments(ctx, request.sessionId, childId, carried);
+              content = [...transferred.parts, ...content];
+              if (transferred.dropped > 0) {
+                console.warn(`[prompt-edit] ${transferred.dropped} attachment(s) could not be carried over`);
+              }
+            }
+
             try {
               const result = await ctx.remote.session.prompt({
                 requestId: newRequestId(),
                 sessionId: childId,
                 mode: 'queue',
-                content: [{ type: 'text', text: nextText }],
+                content,
                 clientTimeZone: clientTimeZone(),
               });
               if (result === null || result === undefined || result.ok !== true) {
@@ -681,7 +783,7 @@ window.__ModuleLoader__.load({
             {
               name: OVERLAY_SLOT,
               id: 'prompt-edit-dialog',
-              order: 101,
+              order: 104,
               locale: NS,
             },
             createDialog(ctx, store),
