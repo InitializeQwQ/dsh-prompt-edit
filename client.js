@@ -30,8 +30,8 @@ window.__ModuleLoader__.load({
     const OVERLAY_SLOT = 'shell.overlay';
 
     const zh = {
-      'action.edit': '编辑提问',
-      'action.tooltip': '修改这条提问，并从这条提问重写后面的对话',
+      'action.edit': '编辑消息',
+      'action.tooltip': '编辑消息',
       'action.copy': '复制',
       'action.copied': '已复制',
       'dialog.title': '编辑提问',
@@ -54,8 +54,8 @@ window.__ModuleLoader__.load({
     };
 
     const en = {
-      'action.edit': 'Edit prompt',
-      'action.tooltip': 'Edit this prompt and rewrite the conversation from here',
+      'action.edit': 'Edit message',
+      'action.tooltip': 'Edit message',
       'action.copy': 'Copy',
       'action.copied': 'Copied',
       'dialog.title': 'Edit prompt',
