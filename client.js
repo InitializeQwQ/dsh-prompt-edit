@@ -40,6 +40,8 @@ window.__ModuleLoader__.load({
       'action.tooltip': '编辑消息',
       'action.copy': '复制',
       'action.copied': '已复制',
+      'clock.md': '{m}月{d}日',
+      'clock.ymd': '{y}年{m}月{d}日',
       'dialog.title': '编辑消息',
       'dialog.description':
         '保存后，这条消息及其之后的回答会从对话中移除，修改后的内容作为新的消息重新生成。原对话会被归档，可在「已归档」中恢复。',
@@ -64,6 +66,8 @@ window.__ModuleLoader__.load({
       'action.tooltip': 'Edit message',
       'action.copy': 'Copy',
       'action.copied': 'Copied',
+      'clock.md': '{m}/{d}',
+      'clock.ymd': '{y}-{m}-{d}',
       'dialog.title': 'Edit message',
       'dialog.description':
         'Saving removes this message and every turn after it, then regenerates the answer from your revised text. The original conversation is archived and can be restored from Archived.',
@@ -93,11 +97,9 @@ window.__ModuleLoader__.load({
     const STYLE = `
 .dsh-pe__userRow{display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:100%}
 .dsh-pe__userRow:focus,.dsh-pe__userRow:focus-visible{outline:none}
-.dsh-pe__userActions{display:flex;align-items:center;gap:8px;height:calc(28px + var(--dsh-content-font-delta,0px));opacity:0;transition:opacity 80ms ease}
-.dsh-pe__userRow:hover .dsh-pe__userActions,.dsh-pe__userRow:focus-within .dsh-pe__userActions{opacity:1}
-@media (hover:none){.dsh-pe__userActions{opacity:1}}
+.dsh-pe__userActions{display:flex;align-items:center;gap:8px;height:calc(28px + var(--dsh-content-font-delta,0px))}
 .dsh-pe__fallback{max-width:100%;padding:10px 16px;border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-bubble);color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word}
-.dsh-pe__userTime{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);white-space:nowrap;padding-right:4px}
+.dsh-pe__userTime{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);white-space:nowrap;padding-right:12px}
 .dsh-pe__tip{position:relative;display:inline-flex}
 .dsh-pe__tip::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);right:0;z-index:20;padding:4px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);font-size:12px;line-height:16px;white-space:nowrap;box-shadow:0 8px 24px color-mix(in srgb,var(--dsw-alias-label-primary) 16%,transparent);opacity:0;pointer-events:none;transition:opacity .12s ease}
 .dsh-pe__tip:hover::after,.dsh-pe__tip:focus-within::after{opacity:1}
@@ -126,7 +128,7 @@ window.__ModuleLoader__.load({
 .dsh-pe__spinner{display:inline-block;width:12px;height:12px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:dsh-pe-spin .8s linear infinite}
 .dsh-pe__srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @keyframes dsh-pe-spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.dsh-pe__userActions,.dsh-pe__iconBtn{transition:none}.dsh-pe__spinner{animation:none}}
+@media (prefers-reduced-motion:reduce){.dsh-pe__iconBtn{transition:none}.dsh-pe__spinner{animation:none}}
 @media (max-width:480px){.dsh-pe__overlay{padding:12px}.dsh-pe__dialog{padding:16px}}
 `;
 
@@ -448,21 +450,51 @@ window.__ModuleLoader__.load({
       return null;
     }
 
-    /** Clock label for one durable message time: HH:mm today, a dated stamp otherwise. */
-    function formatClock(time) {
+    /** Zero-padded two digits, as the host transcript clock writes them. */
+    function pad2(value) {
+      return String(value).padStart(2, '0');
+    }
+
+    /** Local midnight of one instant, used to re-render the clock across days. */
+    function startOfLocalDay(ms) {
+      const date = new Date(ms);
+      date.setHours(0, 0, 0, 0);
+      return date.getTime();
+    }
+
+    /** Milliseconds until the next local midnight. */
+    function msUntilNextLocalMidnight(ms) {
+      const next = new Date(ms);
+      next.setHours(24, 0, 0, 0);
+      return Math.max(next.getTime() - ms, 1);
+    }
+
+    /**
+     * Clock label of one durable message time, identical to the host transcript:
+     * today shows HH:mm, an earlier day of this year shows the localized month and
+     * day, and an earlier year shows the localized full date.
+     * @param time - durable message time in epoch milliseconds.
+     * @param t - dictionary bound to this plugin's namespace.
+     * @param today - local midnight of the day the label is rendered for.
+     */
+    function formatClock(time, t, today) {
       if (typeof time !== 'number' || !Number.isFinite(time)) return '';
       const date = new Date(time);
-      const now = new Date();
-      const locale = typeof navigator === 'object' && typeof navigator.language === 'string' ? navigator.language : 'en';
-      const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
-      try {
-        return new Intl.DateTimeFormat(
-          locale,
-          sameDay ? { hour: '2-digit', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
-        ).format(date);
-      } catch {
-        return '';
+      const now = new Date(typeof today === 'number' && Number.isFinite(today) ? today : Date.now());
+      const clock = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+      if (
+        date.getFullYear() === now.getFullYear()
+        && date.getMonth() === now.getMonth()
+        && date.getDate() === now.getDate()
+      ) {
+        return clock;
       }
+      const params = { y: date.getFullYear(), m: date.getMonth() + 1, d: date.getDate() };
+      const stamp = format(
+        date.getFullYear() === now.getFullYear() ? t('clock.md') : t('clock.ymd'),
+        params,
+      );
+      return `${stamp} ${clock}`;
     }
 
     /** Two overlapping sheets, matching the host's copy glyph weight. */
@@ -550,6 +582,21 @@ window.__ModuleLoader__.load({
         const forkAllowed = useAccess('session/fork');
         const [copied, setCopied] = React.useState(false);
         const timerRef = React.useRef(null);
+        const [today, setToday] = React.useState(() => startOfLocalDay(Date.now()));
+
+        // Re-render at local midnight so an old message switches to the date form.
+        React.useEffect(() => {
+          let timer = null;
+          const arm = () => {
+            const now = Date.now();
+            setToday(startOfLocalDay(now));
+            timer = window.setTimeout(arm, msUntilNextLocalMidnight(now));
+          };
+          timer = window.setTimeout(arm, msUntilNextLocalMidnight(Date.now()));
+          return () => {
+            if (timer !== null) window.clearTimeout(timer);
+          };
+        }, []);
 
         const parts = React.useMemo(() => contentParts(data?.content), [data]);
         const prepared = React.useMemo(
@@ -634,7 +681,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'dsh-pe__userActions' },
-            h('span', { className: 'dsh-pe__userTime' }, formatClock(data?.time)),
+            h('span', { className: 'dsh-pe__userTime' }, formatClock(data?.time, t, today)),
             withTooltip(
               copied ? t('action.copied') : t('action.copy'),
               h(
