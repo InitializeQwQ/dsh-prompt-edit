@@ -3,6 +3,25 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react');
     const h = React.createElement;
+
+    // The shipped action strip gets its hover bubble from the shared primitives.
+    // That package is part of the page's module table; when a deployment does not
+    // expose it, the local themed bubble below takes over.
+    let Tooltip = null;
+    try {
+      const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
+      if (primitives !== null && typeof primitives === 'object' && typeof primitives.Tooltip === 'function') {
+        Tooltip = primitives.Tooltip;
+      }
+    } catch {
+      Tooltip = null;
+    }
+
+    /** Wrap one control in the host tooltip, or in the themed bubble when it is absent. */
+    function withTooltip(label, button) {
+      if (Tooltip !== null) return h(Tooltip, { label, side: 'bottom' }, button);
+      return h('span', { className: 'dsh-pe__tip', 'data-tip': label }, button);
+    }
     const NS = 'prompt-edit';
     const USER_SLOT = 'conversation.chat.node';
     const OVERLAY_SLOT = 'shell.overlay';
@@ -69,6 +88,9 @@ window.__ModuleLoader__.load({
 @media (hover:none){.dsh-pe__userActions{opacity:1}}
 .dsh-pe__fallback{max-width:100%;padding:10px 16px;border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-bubble);color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word}
 .dsh-pe__userTime{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);white-space:nowrap;padding-right:4px}
+.dsh-pe__tip{position:relative;display:inline-flex}
+.dsh-pe__tip::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);right:0;z-index:20;padding:4px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);font-size:12px;line-height:16px;white-space:nowrap;box-shadow:0 8px 24px color-mix(in srgb,var(--dsw-alias-label-primary) 16%,transparent);opacity:0;pointer-events:none;transition:opacity .12s ease}
+.dsh-pe__tip:hover::after,.dsh-pe__tip:focus-within::after{opacity:1}
 .dsh-pe__iconBtn{width:calc(28px + var(--dsh-content-font-delta,0px));height:calc(28px + var(--dsh-content-font-delta,0px));display:inline-flex;align-items:center;justify-content:center;padding:6px;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer;transition:background-color 80ms ease,color 80ms ease}
 .dsh-pe__iconBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .dsh-pe__iconBtn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
@@ -576,29 +598,33 @@ window.__ModuleLoader__.load({
             'div',
             { className: 'dsh-pe__userActions' },
             h('span', { className: 'dsh-pe__userTime' }, formatClock(data?.time)),
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'dsh-pe__iconBtn',
-                title: copied ? t('action.copied') : t('action.copy'),
-                'aria-label': copied ? t('action.copied') : t('action.copy'),
-                onClick: copy,
-              },
-              h(CopyIcon),
+            withTooltip(
+              copied ? t('action.copied') : t('action.copy'),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dsh-pe__iconBtn',
+                  'aria-label': copied ? t('action.copied') : t('action.copy'),
+                  onClick: copy,
+                },
+                h(CopyIcon),
+              ),
             ),
             editable && forkAllowed
-              ? h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'dsh-pe__iconBtn',
-                    title: t('action.tooltip'),
-                    'aria-label': t('action.edit'),
-                    'data-prompt-edit': 'trigger',
-                    onClick: open,
-                  },
-                  h(PencilIcon),
+              ? withTooltip(
+                  t('action.tooltip'),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dsh-pe__iconBtn',
+                      'aria-label': t('action.edit'),
+                      'data-prompt-edit': 'trigger',
+                      onClick: open,
+                    },
+                    h(PencilIcon),
+                  ),
                 )
               : null,
           ),
@@ -935,7 +961,7 @@ window.__ModuleLoader__.load({
             {
               name: OVERLAY_SLOT,
               id: 'prompt-edit-dialog',
-              order: 105,
+              order: 106,
               locale: NS,
             },
             createDialog(ctx, store),
