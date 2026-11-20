@@ -9,15 +9,21 @@ window.__ModuleLoader__.load({
     // expose it, the local themed bubble below takes over.
     let Tooltip = null;
     let writeClipboard = null;
+    let IconCopyHost = null;
+    let IconCheckHost = null;
     try {
       const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
       if (primitives !== null && typeof primitives === 'object') {
         if (typeof primitives.Tooltip === 'function') Tooltip = primitives.Tooltip;
         if (typeof primitives.writeClipboard === 'function') writeClipboard = primitives.writeClipboard;
+        if (typeof primitives.IconCopyOutlineRegular === 'function') IconCopyHost = primitives.IconCopyOutlineRegular;
+        if (typeof primitives.IconCheckOutlineRegular === 'function') IconCheckHost = primitives.IconCheckOutlineRegular;
       }
     } catch {
       Tooltip = null;
       writeClipboard = null;
+      IconCopyHost = null;
+      IconCheckHost = null;
     }
 
     /** Wrap one control in the host tooltip, or in the themed bubble when it is absent. */
@@ -642,7 +648,13 @@ window.__ModuleLoader__.load({
                   'aria-label': copied ? t('action.copied') : t('action.copy'),
                   onClick: copy,
                 },
-                copied ? h(CheckIcon) : h(CopyIcon),
+                copied
+                  ? IconCheckHost !== null
+                    ? h(IconCheckHost)
+                    : h(CheckIcon)
+                  : IconCopyHost !== null
+                    ? h(IconCopyHost)
+                    : h(CopyIcon),
               ),
             ),
             editable && forkAllowed
