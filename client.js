@@ -4,12 +4,14 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const NS = 'prompt-edit';
-    const TAIL_SLOT = 'conversation.chat.turnTail';
+    const USER_SLOT = 'conversation.chat.node';
     const OVERLAY_SLOT = 'shell.overlay';
 
     const zh = {
       'action.edit': '编辑提问',
       'action.tooltip': '修改这条提问，并从这条提问重写后面的对话',
+      'action.copy': '复制',
+      'action.copied': '已复制',
       'dialog.title': '编辑提问',
       'dialog.description':
         '保存后，这条提问及其之后的回答会从对话中移除，修改后的内容作为新的提问重新生成。原对话会被归档，可在「已归档」中恢复。',
@@ -32,6 +34,8 @@ window.__ModuleLoader__.load({
     const en = {
       'action.edit': 'Edit prompt',
       'action.tooltip': 'Edit this prompt and rewrite the conversation from here',
+      'action.copy': 'Copy',
+      'action.copied': 'Copied',
       'dialog.title': 'Edit prompt',
       'dialog.description':
         'Saving removes this prompt and every turn after it, then regenerates the answer from your revised text. The original conversation is archived and can be restored from Archived.',
@@ -59,14 +63,16 @@ window.__ModuleLoader__.load({
      * is "always" on the latest response-ending turn and "hover" elsewhere.
      */
     const STYLE = `
-.dsh-pe__tail{display:flex;align-items:center;margin:0 0 -6px;transition:opacity .12s ease}
-.dsh-pe__trigger{display:inline-flex;align-items:center;gap:6px;height:26px;margin:0 0 0 -8px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:18px;cursor:pointer;transition:background-color .12s ease,color .12s ease}
-.dsh-pe__trigger:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
-.dsh-pe__trigger:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
-.dsh-pe__trigger svg{width:13px;height:13px;flex:none}
-[data-actions-reveal="hover"] .dsh-pe__tail{opacity:0}
-[data-turn-tail]:hover .dsh-pe__tail,[data-turn-tail]:focus-within .dsh-pe__tail{opacity:1}
-@media (hover:none){[data-actions-reveal="hover"] .dsh-pe__tail{opacity:1}}
+.dsh-pe__userRow{display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:100%}
+.dsh-pe__userActions{display:flex;align-items:center;gap:8px;height:calc(28px + var(--dsh-content-font-delta,0px));opacity:0;transition:opacity 80ms ease}
+.dsh-pe__userRow:hover .dsh-pe__userActions,.dsh-pe__userRow:focus-within .dsh-pe__userActions{opacity:1}
+@media (hover:none){.dsh-pe__userActions{opacity:1}}
+.dsh-pe__fallback{max-width:100%;padding:10px 16px;border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-bubble);color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word}
+.dsh-pe__userTime{font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-tertiary);white-space:nowrap;padding-right:4px}
+.dsh-pe__iconBtn{width:calc(28px + var(--dsh-content-font-delta,0px));height:calc(28px + var(--dsh-content-font-delta,0px));display:inline-flex;align-items:center;justify-content:center;padding:6px;border:0;border-radius:var(--dsw-radius-sm);background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer;transition:background-color 80ms ease,color 80ms ease}
+.dsh-pe__iconBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.dsh-pe__iconBtn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.dsh-pe__iconBtn svg{width:calc(15px + var(--dsh-content-font-delta,0px));height:calc(15px + var(--dsh-content-font-delta,0px))}
 .dsh-pe__overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:auto;background:color-mix(in srgb,var(--dsw-alias-bg-base) 58%,transparent)}
 .dsh-pe__dialog{box-sizing:border-box;display:flex;flex-direction:column;gap:12px;width:min(600px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:20px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);box-shadow:0 24px 64px color-mix(in srgb,var(--dsw-alias-label-primary) 22%,transparent)}
 .dsh-pe__header{display:flex;flex-direction:column;gap:6px}
@@ -88,7 +94,7 @@ window.__ModuleLoader__.load({
 .dsh-pe__spinner{display:inline-block;width:12px;height:12px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:dsh-pe-spin .8s linear infinite}
 .dsh-pe__srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @keyframes dsh-pe-spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.dsh-pe__tail,.dsh-pe__trigger{transition:none}.dsh-pe__spinner{animation:none}}
+@media (prefers-reduced-motion:reduce){.dsh-pe__userActions,.dsh-pe__iconBtn{transition:none}.dsh-pe__spinner{animation:none}}
 @media (max-width:480px){.dsh-pe__overlay{padding:12px}.dsh-pe__dialog{padding:16px}}
 `;
 
@@ -237,19 +243,6 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /**
-     * Resolve the numeric Turn of the footer seat's `turn` prop.
-     *
-     * The seat hands over the Turn state object (`{ turn, start, end, status }`),
-     * not a bare number, so normalize before indexing the Chat timeline; a plain
-     * number is accepted too.
-     */
-    function turnNumber(value) {
-      if (typeof value === 'number' && Number.isFinite(value)) return value;
-      const inner = value !== null && typeof value === 'object' ? value.turn : undefined;
-      return typeof inner === 'number' && Number.isFinite(inner) ? inner : null;
-    }
-
     /** First durable user prompt of one Turn, or null for other trigger kinds. */
     function firstUserNode(snapshot, turn) {
       if (typeof turn !== 'number' || !Number.isFinite(turn)) return null;
@@ -392,14 +385,99 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function createAction(ctx, store) {
-      return function PromptEditAction({ turn, sessionId, useChat, useAccess, t }) {
-        const turnNo = turnNumber(turn);
-        const forkAllowed = useAccess('session/fork');
-        const closed = useChat(
+    /** Split one durable prompt into the bubble text, its attachments, and extra blocks. */
+    function contentParts(content) {
+      const texts = [];
+      const attachments = [];
+      const rest = [];
+      for (const block of Array.isArray(content) ? content : []) {
+        if (block !== null && typeof block === 'object' && block.type === 'text' && typeof block.text === 'string') {
+          texts.push(block.text);
+        } else if (block !== null && typeof block === 'object' && block.type === 'image' && block.attachment !== undefined) {
+          attachments.push({ type: 'image', image: { attachment: block.attachment } });
+        } else if (block !== null && typeof block === 'object' && block.type === 'file' && block.attachment !== undefined) {
+          attachments.push({ type: 'file', file: block.attachment });
+        } else {
+          rest.push(block);
+        }
+      }
+      return { text: texts.join(''), attachments, rest };
+    }
+
+    /** Turn whose durable range covers one event sequence. */
+    function turnOfSeq(snapshot, seq) {
+      if (typeof seq !== 'number') return null;
+      const turns = snapshot?.timeline?.turns;
+      if (!(turns instanceof Map)) return null;
+      for (const [turn, state] of turns) {
+        const start = state?.start?.seq;
+        if (typeof start !== 'number' || seq < start) continue;
+        const end = state?.end?.seq;
+        if (typeof end === 'number' && seq > end) continue;
+        return turn;
+      }
+      return null;
+    }
+
+    /** Clock label for one durable message time: HH:mm today, a dated stamp otherwise. */
+    function formatClock(time) {
+      if (typeof time !== 'number' || !Number.isFinite(time)) return '';
+      const date = new Date(time);
+      const now = new Date();
+      const locale = typeof navigator === 'object' && typeof navigator.language === 'string' ? navigator.language : 'en';
+      const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+      try {
+        return new Intl.DateTimeFormat(
+          locale,
+          sameDay ? { hour: '2-digit', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+        ).format(date);
+      } catch {
+        return '';
+      }
+    }
+
+    /** Two overlapping sheets, matching the host's copy glyph weight. */
+    function CopyIcon() {
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.5,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+        },
+        h('rect', { x: 5.6, y: 5.6, width: 8, height: 8, rx: 1.6 }),
+        h('path', { d: 'M10.4 5.6V4a1.6 1.6 0 0 0-1.6-1.6H4A1.6 1.6 0 0 0 2.4 4v4.8A1.6 1.6 0 0 0 4 10.4h1.6' }),
+      );
+    }
+
+    /**
+     * Durable user row carrying the edit affordance beside copy.
+     *
+     * The shipped row renders its action strip inline and exposes no seat inside
+     * it, so this entry owns the `user` key: the bubble itself still comes from the
+     * `conversation.chat.user.content` factory, and only the strip is local. The
+     * message-source seat that the shipped entry declares has no occupants, so
+     * leaving it out of this row changes nothing visible.
+     */
+    function createUserRow(ctx, store) {
+      return function PromptEditUserRow({ node, renderFactorySlot, loadImage, t, useChat, useAccess, sessionId }) {
+        const data = node.data;
+        const seq = data?.seq;
+        const turnNo = useChat(React.useCallback((snapshot) => turnOfSeq(snapshot, seq), [seq]));
+        const editable = useChat(
           React.useCallback(
-            (snapshot) => turnNo !== null && snapshot.timeline.turns.get(turnNo)?.status === 'closed',
-            [turnNo],
+            (snapshot) => {
+              if (turnNo === null) return false;
+              const state = snapshot.timeline.turns.get(turnNo);
+              if (state === undefined || state.status !== 'closed') return false;
+              const first = firstUserNode(snapshot, turnNo);
+              return first !== null && first !== undefined && first.data?.seq === seq;
+            },
+            [seq, turnNo],
           ),
         );
         const startSeq = useChat(
@@ -417,44 +495,112 @@ window.__ModuleLoader__.load({
             (snapshot) => {
               if (turnNo === null || turnNo <= 1) return 0;
               const previous = snapshot.timeline.turns.get(turnNo - 1);
-              const seq = previous?.end?.seq;
-              return typeof seq === 'number' ? seq : -1;
+              const seqBefore = previous?.end?.seq;
+              return typeof seqBefore === 'number' ? seqBefore : -1;
             },
             [turnNo],
           ),
         );
-        const promptNode = useChat(React.useCallback((snapshot) => firstUserNode(snapshot, turnNo), [turnNo]));
+        const forkAllowed = useAccess('session/fork');
+        const [copied, setCopied] = React.useState(false);
+        const timerRef = React.useRef(null);
 
-        if (turnNo === null || !forkAllowed || !closed || promptNode === null || promptNode === undefined) return null;
+        const parts = React.useMemo(() => contentParts(data?.content), [data]);
+        const prepared = React.useMemo(
+          () => ({
+            text: parts.text,
+            attachments: parts.attachments,
+            extraBlocks: parts.rest,
+            ...(data?.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }),
+          }),
+          [data?.referenceLabels, parts],
+        );
+        const facts = React.useMemo(
+          () => ({
+            ...(data?.referenceLabels === undefined ? {} : { sessionLabels: data.referenceLabels }),
+            ...(data?.skillNames === undefined ? {} : { skillNames: data.skillNames }),
+          }),
+          [data?.referenceLabels, data?.skillNames],
+        );
 
-        const content = promptNode.data.content;
+        React.useEffect(
+          () => () => {
+            if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+          },
+          [],
+        );
+
+        const copy = () => {
+          if (typeof navigator !== 'object' || navigator.clipboard === undefined) return;
+          navigator.clipboard.writeText(parts.text).then(
+            () => {
+              setCopied(true);
+              timerRef.current = window.setTimeout(() => {
+                timerRef.current = null;
+                setCopied(false);
+              }, 1000);
+            },
+            () => {},
+          );
+        };
+
         const open = () => {
+          if (turnNo === null) return;
           store.open({
             sessionId,
             turn: turnNo,
-            initialText: promptText(content),
-            content,
-            attachments: attachmentCount(content),
+            initialText: promptText(data?.content),
+            content: data?.content,
+            attachments: attachmentCount(data?.content),
             boundary,
             turnStartSeq: startSeq >= 0 ? startSeq : null,
             resolveBoundary: () => revealPreviousTurn(ctx, sessionId, turnNo, startSeq >= 0 ? startSeq : null),
           });
         };
 
+        let bubble;
+        try {
+          bubble =
+            typeof renderFactorySlot === 'function'
+              ? renderFactorySlot('conversation.chat.user.content', { content: prepared, loadImage, facts, interactive: true })
+              : h('div', { className: 'dsh-pe__fallback' }, parts.text);
+        } catch (error) {
+          bubble = h('div', { className: 'dsh-pe__fallback' }, parts.text);
+        }
+
         return h(
           'div',
-          { className: 'dsh-pe__tail', 'data-prompt-edit': 'trigger' },
+          { className: 'dsh-pe__userRow', 'data-prompt-edit': 'user-row' },
+          bubble,
           h(
-            'button',
-            {
-              type: 'button',
-              className: 'dsh-pe__trigger',
-              title: t('action.tooltip'),
-              'aria-label': t('action.edit'),
-              onClick: open,
-            },
-            h(PencilIcon),
-            h('span', null, t('action.edit')),
+            'div',
+            { className: 'dsh-pe__userActions' },
+            h('span', { className: 'dsh-pe__userTime' }, formatClock(data?.time)),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-pe__iconBtn',
+                title: copied ? t('action.copied') : t('action.copy'),
+                'aria-label': copied ? t('action.copied') : t('action.copy'),
+                onClick: copy,
+              },
+              h(CopyIcon),
+            ),
+            editable && forkAllowed
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dsh-pe__iconBtn',
+                    title: t('action.tooltip'),
+                    'aria-label': t('action.edit'),
+                    'data-prompt-edit': 'trigger',
+                    onClick: open,
+                  },
+                  h(PencilIcon),
+                )
+              : null,
           ),
         );
       };
@@ -756,6 +902,7 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'sessions', 'uiConversation', 'uiWorkspace', 'locale', 'remote', 'remote.session'],
       apply(ctx) {
+
         const store = createEditorStore();
         ctx.effect(() => {
           const tag = document.createElement('style');
@@ -767,23 +914,28 @@ window.__ModuleLoader__.load({
           };
         }, 'dsh-prompt-edit: styles');
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-prompt-edit: dictionaries');
-        ctx.slots.inject(TAIL_SLOT, () =>
-          ctx.slots.register(
-            {
-              name: TAIL_SLOT,
-              id: 'prompt-edit',
-              order: 40,
-              locale: NS,
-            },
-            createAction(ctx, store),
-          ),
-        );
+        ctx.slots.inject(USER_SLOT, () => {
+          try {
+            const dispose = ctx.slots.register(
+              {
+                name: USER_SLOT,
+                key: 'user',
+                locale: NS,
+                priority: -1,
+              },
+              createUserRow(ctx, store),
+            );
+            return dispose;
+          } catch {
+            return () => {};
+          }
+        });
         ctx.slots.inject(OVERLAY_SLOT, () =>
           ctx.slots.register(
             {
               name: OVERLAY_SLOT,
               id: 'prompt-edit-dialog',
-              order: 104,
+              order: 105,
               locale: NS,
             },
             createDialog(ctx, store),
