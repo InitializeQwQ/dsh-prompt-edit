@@ -111,3 +111,5 @@ git clone https://github.com/InitializeQwQ/dsh-prompt-edit.git
 ## License
 
 [MIT](LICENSE)
+
+用户消息动作条里的铅笔图标取自 [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo) 的 `IconEditOutline16`（MIT，Copyright (c) 2026 DeepSeek）；复制与勾选图标使用宿主自带的 `IconCopyOutlineRegular` / `IconCheckOutlineRegular`。
