@@ -8,13 +8,16 @@ window.__ModuleLoader__.load({
     // That package is part of the page's module table; when a deployment does not
     // expose it, the local themed bubble below takes over.
     let Tooltip = null;
+    let writeClipboard = null;
     try {
       const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
-      if (primitives !== null && typeof primitives === 'object' && typeof primitives.Tooltip === 'function') {
-        Tooltip = primitives.Tooltip;
+      if (primitives !== null && typeof primitives === 'object') {
+        if (typeof primitives.Tooltip === 'function') Tooltip = primitives.Tooltip;
+        if (typeof primitives.writeClipboard === 'function') writeClipboard = primitives.writeClipboard;
       }
     } catch {
       Tooltip = null;
+      writeClipboard = null;
     }
 
     /** Wrap one control in the host tooltip, or in the themed bubble when it is absent. */
@@ -476,6 +479,23 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /** Check mark the host swaps in for one second after a successful copy. */
+    function CheckIcon() {
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.5,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+        },
+        h('path', { d: 'm3 8.4 3.2 3.2L13 4.6' }),
+      );
+    }
+
     /**
      * Durable user row carrying the edit affordance beside copy.
      *
@@ -553,9 +573,19 @@ window.__ModuleLoader__.load({
         );
 
         const copy = () => {
-          if (typeof navigator !== 'object' || navigator.clipboard === undefined) return;
-          navigator.clipboard.writeText(parts.text).then(
-            () => {
+          let write;
+          if (writeClipboard !== null) {
+            write = writeClipboard(parts.text);
+          } else if (typeof navigator === 'object' && navigator.clipboard !== undefined) {
+            write = navigator.clipboard.writeText(parts.text);
+          } else {
+            return;
+          }
+          Promise.resolve(write).then(
+            (ok) => {
+              // writeClipboard reports false when the clipboard refused the write.
+              if (ok === false) return;
+              if (timerRef.current !== null) window.clearTimeout(timerRef.current);
               setCopied(true);
               timerRef.current = window.setTimeout(() => {
                 timerRef.current = null;
@@ -608,7 +638,7 @@ window.__ModuleLoader__.load({
                   'aria-label': copied ? t('action.copied') : t('action.copy'),
                   onClick: copy,
                 },
-                h(CopyIcon),
+                copied ? h(CheckIcon) : h(CopyIcon),
               ),
             ),
             editable && forkAllowed
