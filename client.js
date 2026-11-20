@@ -411,9 +411,9 @@ window.__ModuleLoader__.load({
           strokeLinejoin: 'round',
           'aria-hidden': true,
         },
-        h('path', { d: 'M3.2 12.8 4.1 9.5 10.9 2.7a1.6 1.6 0 0 1 2.3 2.3L6.4 11.8l-3.2.9Z' }),
-        h('path', { d: 'm9.7 3.9 2.4 2.4' }),
-        h('path', { d: 'M3.2 14.2h9.6' }),
+        h('path', { d: 'M2.6 13.4 3.4 10.1 10.1 3.4a1.7 1.7 0 0 1 2.4 2.4L5.8 12.6l-3.2.8Z' }),
+        h('path', { d: 'm9.1 4.4 2.4 2.4' }),
+        h('path', { d: 'M8.6 14.3h6', strokeWidth: 1.8 }),
       );
     }
 
@@ -1007,7 +1007,7 @@ window.__ModuleLoader__.load({
             {
               name: OVERLAY_SLOT,
               id: 'prompt-edit-dialog',
-              order: 106,
+              order: 107,
               locale: NS,
             },
             createDialog(ctx, store),
