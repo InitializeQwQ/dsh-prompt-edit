@@ -4,7 +4,7 @@
 
 给 [DeepSeek Harness](https://github.com/deepseek-ai) 的 Web 界面加一个 **编辑消息** 动作：在已完成的一轮对话下修改原来的消息，从这条消息处把后面的对话切掉，并用改后的内容重新生成回答 —— 类似 ChatGPT 的「编辑并重新发送」。
 
-> A DeepSeek Harness bundle (Host + Web Client) that adds an **Edit prompt** action to completed turns: edit the prompt, cut the conversation at that point, and regenerate the answer from the revised text.
+> A DeepSeek Harness bundle (Host + Web Client) that adds an **Edit message** action to completed turns: edit the message, cut the conversation at that point, and regenerate the answer from the revised text.
 
 - 不需要额外服务、没有 npm 依赖、没有构建步骤；Host 半侧只注册一条鉴权 RPC 通道
 - 复用宿主自带的 `session/fork` 与 `session.prompt`，切出来的对话和内置「分支」按钮的结果一致
