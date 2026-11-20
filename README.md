@@ -65,6 +65,7 @@ git clone https://github.com/InitializeQwQ/dsh-prompt-edit.git
 - 用户消息行由 `conversation.chat.node` 的 `user` 渲染位负责，宿主没有在它的动作条里留插槽，所以插件以更低优先级（`priority: -1`）**遮蔽**该渲染位：气泡内容仍由宿主的 `conversation.chat.user.content` 工厂渲染，只有「时间 + 复制 + 编辑」这条动作条是本地实现。编辑器注册在 `shell.overlay`（根层浮层，不会被聊天滚动容器裁剪）。
 - 分支边界取**上一轮的 `turn/end`**（第一轮取 `0`）。宿主的 fork 边界是闭区间，而原消息的 `agent/inbox/spliced` 紧随上一轮结束之后，所以这样切**不会把原消息带进新会话**，也不会重复生成。
 - 上一轮尚未载入时，先向上翻一页历史（按轮对齐）再解析边界；解析不到就明确报错，不会退化成可能带进原消息的位置。
+- 创建分支后会先把原会话的**模型与推理等级**（provider / model / reasoningEffort）复制到新对话，再发送修改后的内容，所以重写不会退回默认路由；这一步失败只会记一条警告，不影响发送。
 - 发送走宿主 `session.prompt`，与输入框同一条链路；失败原因显示在弹窗里。
 - 附件迁移分两条路：图片在会话日志里是持久引用，客户端向 `session.attachment` 取回字节后以 base64 原样重发；普通文件的字节只在 Host 上（`attachments.readFileStream`），提示词又只能用上传回执引用文件，所以 `index.js` 在鉴权的 Connection RPC 通道 `/prompt-edit` 上把存储对象转成子会话的 `receiptId`，客户端用 `{ type: 'file', receiptId }` 引用。
 - 保存成功后归档原会话并按原标题切到新对话，所以侧边栏看起来是**同一条对话被重写**，而不是多出一条分支。

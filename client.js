@@ -171,6 +171,40 @@ window.__ModuleLoader__.load({
       return images.length + files.length;
     }
 
+    /**
+     * Model selection one Session is currently using, as the composer's model
+     * seat shows it. A fork copies history but not the Session-local selection,
+     * so the child would fall back to the default route and effort.
+     * @param ctx - client plugin context.
+     * @param sessionId - Session whose selection is read.
+     * @returns the recorded provider/model/effort, or null when unavailable.
+     */
+    function currentModelSelection(ctx, sessionId) {
+      const usable = (candidate) => (
+        candidate !== null
+        && typeof candidate === 'object'
+        && typeof candidate.provider === 'string'
+        && typeof candidate.model === 'string'
+      );
+      // Preferred: the shared per-session directory the model seat renders from.
+      try {
+        const directory = ctx.get('modelDirectories')?.directoryFor?.(sessionId);
+        const current = directory?.store?.getSnapshot?.()?.current;
+        if (usable(current)) return current;
+      } catch {
+        /* a session without a retained scope falls back to the projection */
+      }
+      // Fallback: the durable selection projection itself.
+      try {
+        const value = ctx.sessions.binding(sessionId)?.session?.projections?.faceOf?.('modelSelection')?.getSnapshot?.();
+        const recorded = value?.next ?? value?.pending ?? value?.lastUsed;
+        if (usable(recorded)) return recorded;
+      } catch {
+        /* no projection face: leave the child on its default */
+      }
+      return null;
+    }
+
     /** Authenticated host route the bundle's Host half registers for file adoption. */
     const ADOPT_PATH = '/api/prompt-edit';
 
@@ -833,6 +867,24 @@ window.__ModuleLoader__.load({
                 setBusy(false);
                 setError(format(t('error.fork'), { message: describeError(cause) || t('error.unknown') }));
                 return;
+              }
+            }
+
+            // A fork copies events, not the Session-local model selection: carry the
+            // provider, model, and reasoning effort so the rewrite runs the same route.
+            const selection = currentModelSelection(ctx, request.sessionId);
+            if (selection !== null) {
+              try {
+                await ctx.remote.session.selectModel({
+                  sessionId: childId,
+                  provider: selection.provider,
+                  model: selection.model,
+                  ...(typeof selection.reasoningEffort === 'string' && selection.reasoningEffort !== ''
+                    ? { reasoningEffort: selection.reasoningEffort }
+                    : {}),
+                });
+              } catch (cause) {
+                console.warn('[prompt-edit] could not copy the model selection to the branch', cause);
               }
             }
 
