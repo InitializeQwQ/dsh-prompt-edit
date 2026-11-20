@@ -86,6 +86,7 @@ window.__ModuleLoader__.load({
      */
     const STYLE = `
 .dsh-pe__userRow{display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:100%}
+.dsh-pe__userRow:focus,.dsh-pe__userRow:focus-visible{outline:none}
 .dsh-pe__userActions{display:flex;align-items:center;gap:8px;height:calc(28px + var(--dsh-content-font-delta,0px));opacity:0;transition:opacity 80ms ease}
 .dsh-pe__userRow:hover .dsh-pe__userActions,.dsh-pe__userRow:focus-within .dsh-pe__userActions{opacity:1}
 @media (hover:none){.dsh-pe__userActions{opacity:1}}
@@ -596,11 +597,14 @@ window.__ModuleLoader__.load({
           );
         };
 
-        const open = () => {
+        const open = (rowElement) => {
           if (turnNo === null) return;
           store.open({
             sessionId,
             turn: turnNo,
+            // Focus returns to the row, not the pencil: the trigger would keep
+            // its focus ring and tooltip up after Esc.
+            returnFocus: rowElement,
             initialText: promptText(data?.content),
             content: data?.content,
             attachments: attachmentCount(data?.content),
@@ -622,7 +626,7 @@ window.__ModuleLoader__.load({
 
         return h(
           'div',
-          { className: 'dsh-pe__userRow', 'data-prompt-edit': 'user-row' },
+          { className: 'dsh-pe__userRow', 'data-prompt-edit': 'user-row', tabIndex: -1 },
           bubble,
           h(
             'div',
@@ -651,7 +655,7 @@ window.__ModuleLoader__.load({
                       className: 'dsh-pe__iconBtn',
                       'aria-label': t('action.edit'),
                       'data-prompt-edit': 'trigger',
-                      onClick: open,
+                      onClick: (event) => open(event.currentTarget.closest('[data-prompt-edit="user-row"]')),
                     },
                     h(PencilIcon),
                   ),
@@ -679,7 +683,7 @@ window.__ModuleLoader__.load({
         // Reset per request; the dialog component stays mounted in the overlay.
         React.useEffect(() => {
           if (request === null) return;
-          const restore = document.activeElement;
+          const restore = request.returnFocus instanceof HTMLElement ? request.returnFocus : document.activeElement;
           setValue(request.initialText);
           setBusy(false);
           setError(null);
